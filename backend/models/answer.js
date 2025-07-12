@@ -25,7 +25,11 @@ const AnswerSchema = new mongoose.Schema({
   voters: [{
     clerkUserId: { type: String },
     vote: { type: Number } // 1 for upvote, -1 for downvote
-  }]
+  }],
+  accepted: {
+    type: Boolean,
+    default: false
+  }
 }, {
   timestamps: true
 });

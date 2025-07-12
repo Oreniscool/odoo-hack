@@ -13,7 +13,7 @@ import Unauthorized from './pages/Unauthorized';
 function App() {
   return (
     <Router>
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
         <Navbar />
         <Routes>
           {/* Public routes */}

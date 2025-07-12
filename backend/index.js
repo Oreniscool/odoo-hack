@@ -4,6 +4,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import quetionsRoutes from './routes/questions.js';
 import answerRoutes from './routes/answers.js'; // Import the Answers model
+import notificationRoutes from './routes/notification.route.js'
 import axios from 'axios';
 dotenv.config();
 
@@ -19,6 +20,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Routes
+app.use("/api/notifications", notificationRoutes);
 app.use('/api/questions', quetionsRoutes);
 app.use('/api/answers', answerRoutes);
 // summarize
@@ -47,6 +49,7 @@ app.post('/api/summarize', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({ status: 'Server is running' });
 });
+
 
 // Start server first, then connect to MongoDB
 app.listen(PORT, () => {

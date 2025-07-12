@@ -4,6 +4,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import quetionsRoutes from './routes/questions.js';
 import answerRoutes from './routes/answers.js'; // Import the Answers model
+import axios from 'axios';
 dotenv.config();
 
 const app = express();
@@ -20,6 +21,28 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Routes
 app.use('/api/questions', quetionsRoutes);
 app.use('/api/answers', answerRoutes);
+// summarize
+app.post('/api/summarize', async (req, res) => {
+  try {
+    const { content } = req.body;
+    if (!content) {
+      return res.status(400).json({ error: 'Content is required.' });
+    }
+
+    // Call Gemini API (replace YOUR_API_KEY and endpoint as needed)
+    const response = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        contents: [{ parts: [{ text: `Summarize this to just 1/3:\n${content}` }] }]
+      }
+    );
+
+    const summary = response.data.candidates[0]?.content?.parts[0]?.text || 'No summary generated.';
+    res.json({ summary });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'Server is running' });

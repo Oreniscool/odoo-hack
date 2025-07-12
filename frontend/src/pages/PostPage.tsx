@@ -710,11 +710,11 @@ const PostPage: React.FC = () => {
                   ))}
                 </div>
 
-                <div className="prose prose-sm max-w-none mb-3 text-gray-800">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {question.content}
-                  </ReactMarkdown>
-                </div>
+                <div
+  className="prose prose-sm max-w-none mb-3 text-gray-800"
+  dangerouslySetInnerHTML={{ __html: question.content }}
+/>
+
 
                 {question.image && (
                   <img
@@ -843,5 +843,7 @@ const PostPage: React.FC = () => {
     </div>
   );
 };
+
+
 
 export default PostPage;

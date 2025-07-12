@@ -46,6 +46,7 @@ const Home: React.FC = () => {
   const [filter, setFilter] = useState('latest');
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [votingStates, setVotingStates] = useState<{[key: string]: boolean}>({});
   const navigate = useNavigate();
   const { isSignedIn, user } = useUser();
 
@@ -164,35 +165,50 @@ const Home: React.FC = () => {
       return;
     }
 
+    // Prevent multiple simultaneous votes
+    if (votingStates[questionId]) return;
+
+    setVotingStates(prev => ({ ...prev, [questionId]: true }));
+
     try {
-      const res = await fetch(`http://localhost:5001/api/questions/${questionId}/vote`, {
+      const response = await fetch(`http://localhost:5001/api/questions/${questionId}/vote`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           clerkUserId: user.id,
           vote: type === 'up' ? 1 : -1,
         }),
       });
       
-      if (!res.ok) throw new Error('Vote failed');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Vote failed');
+      }
+
+      const updatedQuestion = await response.json();
       
-      // Update the question in state
+      // Update the question in state with the response from server
       setQuestions(prev => prev.map(q => {
         if (q._id === questionId) {
-          const newVotes = { ...q.votes };
-          if (type === 'up') {
-            newVotes.upvotes = (newVotes.upvotes || 0) + 1;
-          } else {
-            newVotes.downvotes = (newVotes.downvotes || 0) + 1;
-          }
-          return { ...q, votes: newVotes };
+          return {
+            ...q,
+            votes: updatedQuestion.votes || updatedQuestion.question?.votes || {
+              upvotes: (q.votes?.upvotes || 0) + (type === 'up' ? 1 : 0),
+              downvotes: (q.votes?.downvotes || 0) + (type === 'down' ? 1 : 0)
+            }
+          };
         }
         return q;
       }));
       
-      showFeedback('success', 'Vote submitted!');
-    } catch (e) {
-      showFeedback('error', 'Failed to vote.');
+      showFeedback('success', `${type === 'up' ? 'Upvoted' : 'Downvoted'} successfully!`);
+    } catch (error: any) {
+      console.error('Vote error:', error);
+      showFeedback('error', error.message || 'Failed to vote. Please try again.');
+    } finally {
+      setVotingStates(prev => ({ ...prev, [questionId]: false }));
     }
   };
 
@@ -337,7 +353,10 @@ const Home: React.FC = () => {
                     <div className="flex flex-col items-center">
                       <button
                         onClick={() => handleVote(q._id, 'up')}
-                        className="p-1 hover:bg-green-100 rounded text-green-600 transition-colors"
+                        disabled={votingStates[q._id] || !isSignedIn}
+                        className={`p-1 hover:bg-green-100 rounded text-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                          votingStates[q._id] ? 'animate-pulse' : ''
+                        }`}
                       >
                         <ThumbsUp size={16} />
                       </button>
@@ -349,7 +368,10 @@ const Home: React.FC = () => {
                       </div>
                       <button
                         onClick={() => handleVote(q._id, 'down')}
-                        className="p-1 hover:bg-red-100 rounded text-red-600 transition-colors"
+                        disabled={votingStates[q._id] || !isSignedIn}
+                        className={`p-1 hover:bg-red-100 rounded text-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                          votingStates[q._id] ? 'animate-pulse' : ''
+                        }`}
                       >
                         <ThumbsDown size={16} />
                       </button>
@@ -405,6 +427,11 @@ const Home: React.FC = () => {
                       {answerCounts[q._id] === 0 && (
                         <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded text-xs font-medium">
                           Unanswered
+                        </span>
+                      )}
+                      {!isSignedIn && (
+                        <span className="text-gray-400 text-xs">
+                          (Sign in to vote)
                         </span>
                       )}
                     </div>

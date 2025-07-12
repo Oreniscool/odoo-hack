@@ -65,7 +65,7 @@ const generateExcerpt = (content, maxLength = 150) => {
 //     "pages": 1,
 //     "total": 2
 //   }
-// // }
+// }
 // router.get('/', async (req, res) => {
 //   try {
 //     const page = parseInt(req.query.page) || 1;
@@ -113,8 +113,6 @@ const generateExcerpt = (content, maxLength = 150) => {
 //   }
 // });
 
-// GET /api/posts - Get all posts with optional sorting (e.g. ?sortBy=latest)
-//example dekhle GET /api/questions?sortBy=latest
 router.get('/', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -168,8 +166,6 @@ router.get('/', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
-
 
 
 //returns all posts excluding content
@@ -337,12 +333,12 @@ router.post('/', upload.single('image'), async (req, res) => {
       author,
       published = true,
       tags = '[]',
-      clerkUserId
+      clerkUserId,
     } = req.body;
 
     if (!title || !content || !author) {
       return res.status(400).json({
-        error: 'Title, content,clerkuserid and author are required'
+        error: 'Title, content, and author are required'
       });
     }
 
@@ -367,7 +363,9 @@ router.post('/', upload.single('image'), async (req, res) => {
       image: req.file ? {
         data: req.file.buffer,
         contentType: req.file.mimetype
-      } : undefined
+      } : undefined,
+      votes: { upvotes: 0, downvotes: 0 }, // Optional, schema default handles this
+      voters: [] // Optional, schema default handles this
     });
 
     await post.save();
@@ -445,6 +443,36 @@ router.delete('/:slug', async (req, res) => {
 // Multer setup to store file in memory
 
 // POST route to create a post with image
+
+
+// POST /questions/:id/vote
+router.post('/:id/vote', async (req, res) => {
+  try {
+    const { clerkUserId, vote } = req.body; // vote: 1 for upvote, -1 for downvote
+    const question = await Questions.findById(req.params.id);
+    if (!question) return res.status(404).json({ error: 'Question not found' });
+
+    const existingVote = question.voters.find(v => v.clerkUserId === clerkUserId);
+    if (existingVote) {
+      if (existingVote.vote === vote) {
+        return res.status(400).json({ error: 'Already voted' });
+      }
+      // Update vote
+      if (existingVote.vote === 1) question.votes.upvotes--;
+      if (existingVote.vote === -1) question.votes.downvotes--;
+      existingVote.vote = vote;
+    } else {
+      question.voters.push({ clerkUserId, vote });
+    }
+    if (vote === 1) question.votes.upvotes++;
+    if (vote === -1) question.votes.downvotes++;
+
+    await question.save();
+    res.json(question);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
 
 
 export default router;

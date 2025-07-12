@@ -44,7 +44,15 @@ const QuestionSchema = new mongoose.Schema({
   image: {
     data: Buffer,
     contentType: String
-  }
+  },
+  votes: {
+    upvotes: { type: Number, default: 0 },
+    downvotes: { type: Number, default: 0 }
+  },
+  voters: [{
+    clerkUserId: { type: String },
+    vote: { type: Number } // 1 for upvote, -1 for downvote
+  }]
 }, {
   timestamps: true
 });

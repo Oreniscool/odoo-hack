@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import quetionsRoutes from './routes/questions.js';
-
+import answerRoutes from './routes/answers.js'; // Import the Answers model
 dotenv.config();
 
 const app = express();
@@ -19,7 +19,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Routes
 app.use('/api/questions', quetionsRoutes);
-
+app.use('/api/answers', answerRoutes);
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'Server is running' });

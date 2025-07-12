@@ -317,15 +317,6 @@ const CreatePost: React.FC = () => {
               </Link>
               
               <div className="flex gap-4">
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, published: false })}
-                  className="inline-flex items-center gap-2 px-6 py-3 border-2 border-gray-200 text-gray-700 rounded-2xl hover:bg-gray-50 hover:border-gray-300 transition-all font-semibold"
-                  disabled={loading}
-                >
-                  <Eye className="w-5 h-5" />
-                  Save as Draft
-                </button>
                 
                 <button
                   type="submit"

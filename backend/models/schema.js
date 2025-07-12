@@ -30,6 +30,7 @@ const QuestionSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  draft: { type: Boolean, default: false },
   tags: [{
     type: String,
     trim: true

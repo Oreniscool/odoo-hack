@@ -17,6 +17,7 @@ import notificationRoutes from './routes/notification.route.js';
 
 
 import axios from 'axios';
+import { ClerkExpressWithAuth } from '@clerk/clerk-sdk-node';
 dotenv.config();
 
 const app = express();
@@ -119,8 +120,7 @@ app.post('/api/summarize', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-// Health check (Express route)
+// Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'Server is running' });
 });

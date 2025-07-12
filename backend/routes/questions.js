@@ -57,11 +57,11 @@ router.get('/', async (req, res) => {
     const skip = (page - 1) * limit;
 
     // Sorting logic
-    let sortQuery = { createdAt: -1 }; // default is newest first
+    let sortQuery = { createdAt: -1 };
     if (req.query.sortBy === 'latest') {
-      sortQuery = { createdAt: -1 }; // same as default, just for clarity
+      sortQuery = { createdAt: -1 };
     } else if (req.query.sortBy === 'oldest') {
-      sortQuery = { createdAt: 1 }; // oldest first
+      sortQuery = { createdAt: 1 };
     }
 
     const [posts, total] = await Promise.all([
@@ -88,6 +88,8 @@ router.get('/', async (req, res) => {
         readTime: post.readTime,
         tags: post.tags,
         image,
+        votes: post.votes || { upvotes: 0, downvotes: 0 }, // <-- FIXED HERE
+        clerkUserId: post.clerkUserId, // If you use this in the frontend
       };
     });
 
@@ -104,6 +106,7 @@ router.get('/', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 
 //returns all posts excluding content
@@ -378,5 +381,53 @@ router.post('/:id/vote', async (req, res) => {
   }
 });
 
+
+// POST /api/questions/draft
+router.post('/draft', async (req, res) => {
+  try {
+    const { title, content, tags, image, excerpt, slug, author, clerkUserId } = req.body;
+    if (!clerkUserId) return res.status(401).json({ error: 'Not authenticated' });
+
+    // You may want to check for an existing draft for this user and update it instead of creating new every time
+
+    const draft = new Questions({
+      title,
+      content,
+      tags,
+      image,
+      excerpt,
+      slug,
+      author,
+      clerkUserId,
+      draft: true,
+      published: false,
+    });
+
+    await draft.save();
+    res.status(201).json({ message: 'Draft saved', draft });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/questions/drafts
+router.get('/drafts', async (req, res) => {
+  try {
+    const { clerkUserId } = req.query;
+    if (!clerkUserId) return res.status(401).json({ error: 'Not authenticated' });
+
+    // Optionally, check for admin privileges here
+    const isAdmin = req.user && req.user.isAdmin; // Adjust this depending on your auth setup
+
+    const query = isAdmin
+      ? { draft: true }
+      : { draft: true, clerkUserId };
+
+    const drafts = await Questions.find(query).sort({ createdAt: -1 });
+    res.json({ drafts });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 export default router;

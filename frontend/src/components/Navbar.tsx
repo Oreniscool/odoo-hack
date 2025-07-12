@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useClerk, useUser, SignInButton } from '@clerk/clerk-react';
 import { MessageSquare, User, LogOut, PlusCircle, Menu, X, Home, Settings, BookOpen, Bell } from 'lucide-react';
-import {useNotifications} from '../hooks/useNotifications.js'
 
 // Define a type for your notification object
 interface Notification {

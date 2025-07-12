@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import {
-  Calendar, User, ArrowLeft, ChevronRight, ThumbsUp, ThumbsDown,
-  Loader2, MessageSquare, Send, Edit, Trash2, CheckCircle,
-  Reply, X, Save, AlertCircle, Heart, Star, Sparkles,
-  ChevronDown, ChevronUp, Bot, Eye, EyeOff
+import { 
+  Calendar, User, ArrowLeft, ChevronRight, ThumbsUp, ThumbsDown, 
+  Loader2, MessageSquare, Send, Edit, Trash2, CheckCircle, 
+  Reply, X, Save, AlertCircle, Heart, Star, Sparkles
 } from 'lucide-react';
 import { Helmet } from 'react-helmet';
 import { useUser } from '@clerk/clerk-react';
@@ -50,11 +49,9 @@ const PostPage: React.FC = () => {
   const [replyContent, setReplyContent] = useState('');
   const [editingAnswer, setEditingAnswer] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
-  const [collapsedThreads, setCollapsedThreads] = useState<Set<string>>(new Set());
-  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
-  
   const navigate = useNavigate();
   const { user, isSignedIn } = useUser();
 
@@ -302,6 +299,37 @@ const PostPage: React.FC = () => {
       showFeedback('success', 'Answer deleted!');
     } catch (e) {
       showFeedback('error', 'Failed to delete answer.');
+    }
+  };
+
+  // AI Summarizer function
+  const handleSummarize = async () => {
+    if (!question) return;
+    
+    setSummaryLoading(true);
+    try {
+      // Combine question content and all answers
+      const allContent = [
+        `Question: ${question.title}\n\n${question.content}`,
+        ...answers.map(answer => `Answer by ${answer.author}: ${answer.content}`)
+      ].join('\n\n');
+
+      const res = await fetch('http://localhost:5001/api/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: allContent }),
+      });
+
+      if (!res.ok) throw new Error('Failed to generate summary');
+      
+      const data = await res.json();
+      setSummary(data.summary);
+      setShowSummary(true);
+      showFeedback('success', 'Summary generated successfully!');
+    } catch (e) {
+      showFeedback('error', 'Failed to generate summary.');
+    } finally {
+      setSummaryLoading(false);
     }
   };
 
@@ -712,64 +740,59 @@ const PostPage: React.FC = () => {
             </div>
           </div>
         </div>
+      </div>
 
-        {/* AI Summary Section */}
-        <div className="mb-8">
-          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                <Bot className="text-purple-600" size={24} />
-                AI Summary
-              </h2>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowSummary(!showSummary)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-600"
-                >
-                  {showSummary ? <EyeOff size={20} /> : <Eye size={20} />}
-                </button>
-                <button
-                  onClick={generateAISummary}
-                  disabled={summaryLoading}
-                  className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-xl font-semibold hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50"
-                >
-                  {summaryLoading ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />}
-                  {summaryLoading ? 'Generating...' : 'Generate Summary'}
-                </button>
-              </div>
+      {/* AI Summary Section */}
+      {showSummary && summary && (
+        <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-3xl shadow-xl p-8 mb-8 border-2 border-purple-200">
+          <div className="flex items-center gap-3 mb-4">
+            <Sparkles className="w-6 h-6 text-purple-500" />
+            <h2 className="text-2xl font-bold text-gray-800">AI Summary</h2>
+            <button
+              onClick={() => setShowSummary(false)}
+              className="ml-auto bg-gray-500 text-white p-2 rounded-full hover:bg-gray-600 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="prose prose-lg max-w-none">
+            <div className="bg-white rounded-2xl p-6 shadow-inner">
+              <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{summary}</p>
             </div>
-            
-            <AnimatePresence>
-              {showSummary && aiSummary && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="bg-gradient-to-r from-purple-50 to-pink-50 p-4 rounded-xl border border-purple-200"
-                >
-                  <p className="text-gray-700 leading-relaxed">{aiSummary}</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
         </div>
+      )}
 
-        {/* Answers Section */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">
-              {answers.length} Answer{answers.length !== 1 ? 's' : ''}
-            </h2>
+      {/* Answers Section */}
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-3xl font-bold text-gray-800">
+            {answers.length} Answer{answers.length !== 1 ? 's' : ''}
+          </h2>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSummarize}
+              disabled={summaryLoading || !question}
+              className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-6 py-3 rounded-2xl font-semibold hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {summaryLoading ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Sparkles className="w-5 h-5" />
+              )}
+              {summaryLoading ? 'Generating...' : 'AI Summary'}
+            </button>
             {isSignedIn && (
               <button
                 onClick={() => document.getElementById('answer-form')?.scrollIntoView({ behavior: 'smooth' })}
-                className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition-all flex items-center gap-2"
+                className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-3 rounded-2xl font-semibold hover:shadow-lg transition-all flex items-center gap-2"
               >
-                <MessageSquare size={20} />
+                <MessageSquare className="w-5 h-5" />
                 Write Answer
               </button>
             )}
           </div>
+        </div>
 
           {answerLoading ? (
             <div className="text-center py-12">

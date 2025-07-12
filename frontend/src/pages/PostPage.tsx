@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { 
-  Calendar, User, ArrowLeft, ChevronRight, ThumbsUp, ThumbsDown, 
-  Loader2, MessageSquare, Send, Edit, Trash2, CheckCircle, 
-  Reply, X, Save, AlertCircle, Heart, Star, Sparkles
+import {
+  Calendar, User, ArrowLeft, ChevronRight, ThumbsUp, ThumbsDown,
+  Loader2, MessageSquare, Send, Edit, Trash2, CheckCircle,
+  Reply, X, Save, AlertCircle, Heart, Star, Sparkles,
+  ChevronDown, ChevronUp, Bot, Eye, EyeOff, MoreHorizontal,
+  Bold, Italic, Underline, List, ListOrdered, Quote, Code
 } from 'lucide-react';
 import { Helmet } from 'react-helmet';
 import { useUser } from '@clerk/clerk-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 
 interface Question {
   _id: string;
@@ -49,9 +53,12 @@ const PostPage: React.FC = () => {
   const [replyContent, setReplyContent] = useState('');
   const [editingAnswer, setEditingAnswer] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
-  const [summary, setSummary] = useState<string | null>(null);
+  const [collapsedThreads, setCollapsedThreads] = useState<Set<string>>(new Set());
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
+  const [userProfiles, setUserProfiles] = useState<Map<string, any>>(new Map());
+  
   const navigate = useNavigate();
   const { user, isSignedIn } = useUser();
 
@@ -64,6 +71,23 @@ const PostPage: React.FC = () => {
     '--accent': '#ae4ee7',
   } as React.CSSProperties;
 
+  // Rich text editor configuration
+  const quillModules = {
+    toolbar: [
+      [{ 'header': [1, 2, 3, false] }],
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+      ['blockquote', 'code-block'],
+      ['link'],
+      ['clean']
+    ],
+  };
+
+  const quillFormats = [
+    'header', 'bold', 'italic', 'underline', 'strike',
+    'list', 'bullet', 'blockquote', 'code-block', 'link'
+  ];
+
   useEffect(() => {
     if (slug) fetchQuestion(slug);
   }, [slug]);
@@ -71,6 +95,40 @@ const PostPage: React.FC = () => {
   const showFeedback = (type: 'success' | 'error', message: string) => {
     setFeedback({ type, message });
     setTimeout(() => setFeedback(null), 3000);
+  };
+
+  const fetchUserProfile = async (clerkUserId: string) => {
+    if (userProfiles.has(clerkUserId)) return userProfiles.get(clerkUserId);
+    
+    try {
+      const res = await fetch(`http://localhost:5001/api/users/${clerkUserId}`);
+      if (res.ok) {
+        const profile = await res.json();
+        setUserProfiles(prev => new Map(prev).set(clerkUserId, profile));
+        return profile;
+      }
+    } catch (e) {
+      console.error('Failed to fetch user profile:', e);
+    }
+    return null;
+  };
+
+  const getUserAvatar = (clerkUserId: string, authorName: string) => {
+    const profile = userProfiles.get(clerkUserId);
+    if (profile?.imageUrl) {
+      return (
+        <img
+          src={profile.imageUrl}
+          alt={authorName}
+          className="w-8 h-8 rounded-full object-cover"
+        />
+      );
+    }
+    return (
+      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-sm font-semibold">
+        {authorName.charAt(0).toUpperCase()}
+      </div>
+    );
   };
 
   const fetchQuestion = async (slug: string) => {
@@ -81,6 +139,8 @@ const PostPage: React.FC = () => {
       if (!res.ok) throw new Error('Question not found');
       const data = await res.json();
       setQuestion(data);
+      
+      await fetchUserProfile(data.clerkUserId);
       fetchAnswers(data._id);
     } catch (e) {
       setError('Question not found');
@@ -96,7 +156,9 @@ const PostPage: React.FC = () => {
       if (!res.ok) throw new Error('Failed to fetch answers');
       const data = await res.json();
       
-      // Build threaded structure
+      const uniqueUserIds = [...new Set(data.map((answer: Answer) => answer.clerkUserId))];
+      await Promise.all(uniqueUserIds.map(userId => fetchUserProfile(userId)));
+      
       const threaded = buildThreadedAnswers(data);
       setAnswers(threaded);
     } catch (e) {
@@ -110,12 +172,10 @@ const PostPage: React.FC = () => {
     const answerMap = new Map<string, Answer>();
     const rootAnswers: Answer[] = [];
 
-    // First pass: create map and initialize replies
     answers.forEach(answer => {
       answerMap.set(answer._id, { ...answer, replies: [] });
     });
 
-    // Second pass: build hierarchy
     answers.forEach(answer => {
       const answerWithReplies = answerMap.get(answer._id)!;
       if (answer.parent) {
@@ -136,10 +196,22 @@ const PostPage: React.FC = () => {
     
     setSummaryLoading(true);
     try {
-      // Mock AI summary - replace with actual AI service
       const content = `${question.content} ${answers.map(a => a.content).join(' ')}`;
-      const summary = `This discussion covers ${question.title}. The main points include: ${content.substring(0, 200)}...`;
-      setAiSummary(summary);
+      
+      const response = await fetch('http://localhost:5001/api/summarize', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ content }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate summary');
+      }
+
+      const data = await response.json();
+      setAiSummary(data.summary);
       setShowSummary(true);
     } catch (e) {
       showFeedback('error', 'Failed to generate summary');
@@ -156,6 +228,19 @@ const PostPage: React.FC = () => {
       newCollapsed.add(answerId);
     }
     setCollapsedThreads(newCollapsed);
+  };
+
+  const formatTimeAgo = (dateString: string) => {
+    const now = new Date();
+    const date = new Date(dateString);
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (diffInSeconds < 60) return `${diffInSeconds}s ago`;
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+    if (diffInSeconds < 31536000) return `${Math.floor(diffInSeconds / 2592000)}mo ago`;
+    return `${Math.floor(diffInSeconds / 31536000)}y ago`;
   };
 
   const handleVote = async (type: 'up' | 'down') => {
@@ -302,37 +387,6 @@ const PostPage: React.FC = () => {
     }
   };
 
-  // AI Summarizer function
-  const handleSummarize = async () => {
-    if (!question) return;
-    
-    setSummaryLoading(true);
-    try {
-      // Combine question content and all answers
-      const allContent = [
-        `Question: ${question.title}\n\n${question.content}`,
-        ...answers.map(answer => `Answer by ${answer.author}: ${answer.content}`)
-      ].join('\n\n');
-
-      const res = await fetch('http://localhost:5001/api/summarize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: allContent }),
-      });
-
-      if (!res.ok) throw new Error('Failed to generate summary');
-      
-      const data = await res.json();
-      setSummary(data.summary);
-      setShowSummary(true);
-      showFeedback('success', 'Summary generated successfully!');
-    } catch (e) {
-      showFeedback('error', 'Failed to generate summary.');
-    } finally {
-      setSummaryLoading(false);
-    }
-  };
-
   const handleSubmitAnswer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isSignedIn || !user) {
@@ -372,73 +426,76 @@ const PostPage: React.FC = () => {
     return (
       <motion.div
         key={answer._id}
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className={`relative ${depth > 0 ? 'ml-8 border-l-2 border-gray-200 pl-4' : ''}`}
+        className={`${depth > 0 ? 'ml-6 border-l border-gray-200 pl-4' : ''}`}
         style={cssVars}
       >
-        {/* Thread line for nested replies */}
-        {depth > 0 && (
-          <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-gray-300 to-transparent"></div>
-        )}
-
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-4 hover:shadow-xl transition-all duration-300">
-          {/* Answer Header */}
-          <div className="flex items-start justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold">
-                {answer.author.charAt(0).toUpperCase()}
-              </div>
+        <div className="bg-white border border-gray-100 p-4 mb-2 hover:bg-gray-50 transition-colors">
+          <div className="flex items-start justify-between mb-2">
+            <div className="flex items-center gap-2">
+              {getUserAvatar(answer.clerkUserId, answer.author)}
               <div>
-                <div className="font-semibold text-gray-800">{answer.author}</div>
-                <div className="text-sm text-gray-500">
-                  {new Date(answer.createdAt).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </div>
+                <div className="font-medium text-sm text-gray-900">{answer.author}</div>
+                <div className="text-xs text-gray-500">{formatTimeAgo(answer.createdAt)}</div>
               </div>
+              {answer.accepted && (
+                <CheckCircle className="text-green-500" size={16} />
+              )}
             </div>
 
-            {/* Collapse/Expand button for threads */}
-            {hasReplies && (
-              <button
-                onClick={() => toggleThread(answer._id)}
-                className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors"
-              >
-                {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
-                {answer.replies!.length} {answer.replies!.length === 1 ? 'reply' : 'replies'}
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => handleAnswerVote(answer._id, 'up')}
+                  className="p-1 hover:bg-green-100 rounded text-green-600"
+                >
+                  <ThumbsUp size={14} />
+                </button>
+                <span className="text-sm font-medium text-gray-700">
+                  {(answer.votes?.upvotes ?? 0) - (answer.votes?.downvotes ?? 0)}
+                </span>
+                <button
+                  onClick={() => handleAnswerVote(answer._id, 'down')}
+                  className="p-1 hover:bg-red-100 rounded text-red-600"
+                >
+                  <ThumbsDown size={14} />
+                </button>
+              </div>
+
+              {hasReplies && (
+                <button
+                  onClick={() => toggleThread(answer._id)}
+                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700"
+                >
+                  {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                  {answer.replies!.length}
+                </button>
+              )}
+
+              <div className="relative">
+                <button className="p-1 hover:bg-gray-100 rounded">
+                  <MoreHorizontal size={14} />
+                </button>
+              </div>
+            </div>
           </div>
 
-          {/* Accepted Answer Badge */}
-          {answer.accepted && (
-            <div className="inline-flex items-center gap-2 bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium mb-4">
-              <CheckCircle size={16} />
-              Accepted Answer
-            </div>
-          )}
-
-          {/* Answer Content */}
-          <div className="mb-4">
+          <div className="mb-2">
             {editingAnswer === answer._id ? (
-              <div className="space-y-4">
-                <textarea
+              <div className="space-y-2">
+                <ReactQuill
                   value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
-                  className="w-full p-4 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-200 focus:border-blue-400 resize-none"
-                  rows={6}
+                  onChange={setEditContent}
+                  modules={quillModules}
+                  formats={quillFormats}
+                  className="bg-white"
                 />
                 <div className="flex gap-2">
                   <button
                     onClick={() => handleEditAnswer(answer._id)}
-                    className="bg-green-500 text-white px-4 py-2 rounded-xl font-semibold hover:bg-green-600 transition-colors flex items-center gap-2"
+                    className="bg-green-500 text-white px-2 py-1 rounded text-xs font-medium hover:bg-green-600"
                   >
-                    <Save size={16} />
                     Save
                   </button>
                   <button
@@ -446,117 +503,79 @@ const PostPage: React.FC = () => {
                       setEditingAnswer(null);
                       setEditContent('');
                     }}
-                    className="bg-gray-500 text-white px-4 py-2 rounded-xl font-semibold hover:bg-gray-600 transition-colors flex items-center gap-2"
+                    className="bg-gray-500 text-white px-2 py-1 rounded text-xs font-medium hover:bg-gray-600"
                   >
-                    <X size={16} />
                     Cancel
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="prose prose-lg max-w-none">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {answer.content}
-                </ReactMarkdown>
+              <div className="prose prose-sm max-w-none text-gray-800">
+                <div dangerouslySetInnerHTML={{ __html: answer.content }} />
               </div>
             )}
           </div>
 
-          {/* Vote and Action Buttons */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {/* Vote buttons */}
-              <div className="flex items-center bg-gray-50 rounded-xl p-1">
-                <button
-                  onClick={() => handleAnswerVote(answer._id, 'up')}
-                  className="p-2 hover:bg-green-100 rounded-lg transition-colors text-green-600"
-                >
-                  <ThumbsUp size={16} />
-                </button>
-                <span className="px-2 font-semibold text-gray-700">
-                  {(answer.votes?.upvotes ?? 0) - (answer.votes?.downvotes ?? 0)}
-                </span>
-                <button
-                  onClick={() => handleAnswerVote(answer._id, 'down')}
-                  className="p-2 hover:bg-red-100 rounded-lg transition-colors text-red-600"
-                >
-                  <ThumbsDown size={16} />
-                </button>
-              </div>
-            </div>
+          <div className="flex items-center gap-2 text-xs">
+            {isSignedIn && (
+              <button
+                onClick={() => setReplyingTo(replyingTo === answer._id ? null : answer._id)}
+                className="text-gray-500 hover:text-blue-600 font-medium"
+              >
+                Reply
+              </button>
+            )}
 
-            {/* Action buttons */}
-            <div className="flex items-center gap-2">
-              {/* Accept Answer Button */}
-              {isSignedIn && user?.id === question?.clerkUserId && !answer.accepted && (
-                <button
-                  onClick={() => handleAcceptAnswer(answer._id)}
-                  className="bg-green-500 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-green-600 transition-colors flex items-center gap-1 text-sm"
-                >
-                  <CheckCircle size={14} />
-                  Accept
-                </button>
-              )}
+            {isSignedIn && user?.id === question?.clerkUserId && !answer.accepted && (
+              <button
+                onClick={() => handleAcceptAnswer(answer._id)}
+                className="text-gray-500 hover:text-green-600 font-medium"
+              >
+                Accept
+              </button>
+            )}
 
-              {/* Reply Button */}
-              {isSignedIn && (
-                <button
-                  onClick={() => setReplyingTo(replyingTo === answer._id ? null : answer._id)}
-                  className="bg-blue-500 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-blue-600 transition-colors flex items-center gap-1 text-sm"
-                >
-                  <Reply size={14} />
-                  Reply
-                </button>
-              )}
-
-              {/* Edit Button */}
-              {isSignedIn && user?.id === answer.clerkUserId && (
+            {isSignedIn && user?.id === answer.clerkUserId && (
+              <>
                 <button
                   onClick={() => {
                     setEditingAnswer(answer._id);
                     setEditContent(answer.content);
                   }}
-                  className="bg-yellow-500 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-yellow-600 transition-colors flex items-center gap-1 text-sm"
+                  className="text-gray-500 hover:text-yellow-600 font-medium"
                 >
-                  <Edit size={14} />
                   Edit
                 </button>
-              )}
-
-              {/* Delete Button */}
-              {isSignedIn && user?.id === answer.clerkUserId && (
                 <button
                   onClick={() => handleDeleteAnswer(answer._id)}
-                  className="bg-red-500 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-red-600 transition-colors flex items-center gap-1 text-sm"
+                  className="text-gray-500 hover:text-red-600 font-medium"
                 >
-                  <Trash2 size={14} />
                   Delete
                 </button>
-              )}
-            </div>
+              </>
+            )}
           </div>
 
-          {/* Reply Form */}
           {replyingTo === answer._id && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="mt-4 p-4 bg-gray-50 rounded-xl"
+              className="mt-3 p-3 bg-gray-50 rounded"
             >
-              <textarea
+              <ReactQuill
                 value={replyContent}
-                onChange={(e) => setReplyContent(e.target.value)}
+                onChange={setReplyContent}
+                modules={quillModules}
+                formats={quillFormats}
                 placeholder="Write your reply..."
-                className="w-full p-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-200 focus:border-blue-400 resize-none"
-                rows={3}
+                className="bg-white mb-2"
               />
-              <div className="flex gap-2 mt-3">
+              <div className="flex gap-2 mt-2">
                 <button
                   onClick={() => handleReplyAnswer(answer._id)}
-                  className="bg-blue-500 text-white px-4 py-2 rounded-xl font-semibold hover:bg-blue-600 transition-colors flex items-center gap-2"
+                  className="bg-blue-500 text-white px-3 py-1 rounded text-xs font-medium hover:bg-blue-600"
                 >
-                  <Send size={16} />
                   Reply
                 </button>
                 <button
@@ -564,9 +583,8 @@ const PostPage: React.FC = () => {
                     setReplyingTo(null);
                     setReplyContent('');
                   }}
-                  className="bg-gray-500 text-white px-4 py-2 rounded-xl font-semibold hover:bg-gray-600 transition-colors flex items-center gap-2"
+                  className="bg-gray-500 text-white px-3 py-1 rounded text-xs font-medium hover:bg-gray-600"
                 >
-                  <X size={16} />
                   Cancel
                 </button>
               </div>
@@ -574,14 +592,13 @@ const PostPage: React.FC = () => {
           )}
         </div>
 
-        {/* Render Replies */}
         <AnimatePresence>
           {hasReplies && !isCollapsed && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="space-y-2"
+              className="space-y-1"
             >
               {answer.replies!.map(reply => renderAnswer(reply, depth + 1))}
             </motion.div>
@@ -589,18 +606,6 @@ const PostPage: React.FC = () => {
         </AnimatePresence>
       </motion.div>
     );
-  };
-
-  const getTagColor = (tag: string) => {
-    const colors = [
-      'bg-gradient-to-r from-purple-400 to-pink-400',
-      'bg-gradient-to-r from-blue-400 to-cyan-400',
-      'bg-gradient-to-r from-green-400 to-emerald-400',
-      'bg-gradient-to-r from-orange-400 to-red-400',
-      'bg-gradient-to-r from-indigo-400 to-purple-400',
-      'bg-gradient-to-r from-pink-400 to-rose-400',
-    ];
-    return colors[tag.length % colors.length];
   };
 
   if (loading) return (
@@ -634,7 +639,6 @@ const PostPage: React.FC = () => {
         <title>{question.title} | StackIt</title>
       </Helmet>
 
-      {/* Feedback Toast */}
       <AnimatePresence>
         {feedback && (
           <motion.div
@@ -651,195 +655,143 @@ const PostPage: React.FC = () => {
         )}
       </AnimatePresence>
 
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-8">
+      <div className="max-w-4xl mx-auto px-4 py-6">
+        <div className="mb-6">
           <Link
             to="/"
-            className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 font-semibold mb-6 transition-colors"
+            className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 font-semibold mb-4 transition-colors text-sm"
           >
-            <ArrowLeft size={20} />
+            <ArrowLeft size={16} />
             Back to Questions
           </Link>
 
           {/* Question Card */}
-          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
-            <div className="flex items-start gap-6">
-              {/* Vote Section */}
-              <div className="flex flex-col items-center gap-2">
+          <div className="bg-white border border-gray-100 p-4">
+            <div className="flex gap-4">
+              <div className="flex flex-col items-center gap-1 min-w-[60px]">
                 <button
                   onClick={() => handleVote('up')}
-                  className="p-3 bg-green-100 hover:bg-green-200 rounded-xl transition-colors text-green-600"
+                  className="p-2 hover:bg-green-100 rounded transition-colors text-green-600"
                 >
-                  <ThumbsUp size={24} />
+                  <ThumbsUp size={18} />
                 </button>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-800">
+                  <div className="text-lg font-bold text-gray-800">
                     {(question.votes?.upvotes ?? 0) - (question.votes?.downvotes ?? 0)}
                   </div>
-                  <div className="text-sm text-gray-500">votes</div>
                 </div>
                 <button
                   onClick={() => handleVote('down')}
-                  className="p-3 bg-red-100 hover:bg-red-200 rounded-xl transition-colors text-red-600"
+                  className="p-2 hover:bg-red-100 rounded transition-colors text-red-600"
                 >
-                  <ThumbsDown size={24} />
+                  <ThumbsDown size={18} />
                 </button>
               </div>
 
-              {/* Question Content */}
               <div className="flex-1">
-                <h1 className="text-3xl font-bold text-gray-900 mb-4">{question.title}</h1>
+                <h1 className="text-xl font-bold text-gray-900 mb-2">{question.title}</h1>
                 
-                {/* Tags */}
-                <div className="flex flex-wrap gap-2 mb-4">
+                <div className="flex items-center gap-3 mb-3">
+                  {getUserAvatar(question.clerkUserId, question.author)}
+                  <div>
+                    <div className="font-medium text-sm text-gray-900">{question.author}</div>
+                    <div className="text-xs text-gray-500">{formatTimeAgo(question.createdAt)}</div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-1 mb-3">
                   {question.tags.map((tag, i) => (
                     <span
                       key={i}
-                      className={`${getTagColor(tag)} text-white px-3 py-1 rounded-full text-sm font-medium`}
+                      className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium"
                     >
                       {tag}
                     </span>
                   ))}
                 </div>
 
-                {/* Question Image */}
-                {question.image && (
-                  <img
-                    src={question.image}
-                    alt="Question"
-                    className="w-full max-w-md rounded-xl shadow-md mb-4"
-                  />
-                )}
-
-                {/* Question Body */}
-                <div className="prose prose-lg max-w-none mb-6">
+                <div className="prose prose-sm max-w-none mb-3 text-gray-800">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {question.content}
                   </ReactMarkdown>
                 </div>
 
-                {/* Question Meta */}
-                <div className="flex items-center gap-4 text-gray-600">
-                  <div className="flex items-center gap-2">
-                    <User size={16} />
-                    <span className="font-medium">{question.author}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Calendar size={16} />
-                    <span>
-                      {new Date(question.createdAt).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                      })}
-                    </span>
-                  </div>
-                </div>
+                {question.image && (
+                  <img
+                    src={question.image}
+                    alt="Question"
+                    className="max-w-sm rounded border shadow-sm"
+                  />
+                )}
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* AI Summary Section */}
-      {showSummary && summary && (
-        <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-3xl shadow-xl p-8 mb-8 border-2 border-purple-200">
-          <div className="flex items-center gap-3 mb-4">
-            <Sparkles className="w-6 h-6 text-purple-500" />
-            <h2 className="text-2xl font-bold text-gray-800">AI Summary</h2>
-            <button
-              onClick={() => setShowSummary(false)}
-              className="ml-auto bg-gray-500 text-white p-2 rounded-full hover:bg-gray-600 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="prose prose-lg max-w-none">
-            <div className="bg-white rounded-2xl p-6 shadow-inner">
-              <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{summary}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Answers Section */}
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-3xl font-bold text-gray-800">
-            {answers.length} Answer{answers.length !== 1 ? 's' : ''}
-          </h2>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleSummarize}
-              disabled={summaryLoading || !question}
-              className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-6 py-3 rounded-2xl font-semibold hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {summaryLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <Sparkles className="w-5 h-5" />
-              )}
-              {summaryLoading ? 'Generating...' : 'AI Summary'}
-            </button>
-            {isSignedIn && (
-              <button
-                onClick={() => document.getElementById('answer-form')?.scrollIntoView({ behavior: 'smooth' })}
-                className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-3 rounded-2xl font-semibold hover:shadow-lg transition-all flex items-center gap-2"
-              >
-                <MessageSquare className="w-5 h-5" />
-                Write Answer
-              </button>
-            )}
-          </div>
-        </div>
-
-          {answerLoading ? (
-            <div className="text-center py-12">
-              <Loader2 className="animate-spin mx-auto mb-4" size={48} />
-              <p className="text-xl font-semibold text-gray-700">Loading answers...</p>
-            </div>
-          ) : answers.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-2xl shadow-lg border border-gray-100">
-              <MessageSquare className="mx-auto mb-4 text-gray-400" size={48} />
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">No answers yet</h3>
-              <p className="text-gray-500 mb-6">Be the first to answer this question!</p>
-              {isSignedIn && (
+        {/* AI Summary Section */}
+        <div className="mb-6">
+          <div className="bg-white border border-gray-100 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <Bot className="text-purple-600" size={20} />
+                AI Summary
+              </h2>
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => document.getElementById('answer-form')?.scrollIntoView({ behavior: 'smooth' })}
-                  className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition-all"
+                  onClick={() => setShowSummary(!showSummary)}
+                  className="p-1 hover:bg-gray-100 rounded transition-colors text-gray-600"
                 >
-                  Write First Answer
+                  {showSummary ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
+                <button
+                  onClick={generateAISummary}
+                  disabled={summaryLoading}
+                  className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-3 py-1 rounded text-sm font-medium hover:shadow-lg transition-all flex items-center gap-1 disabled:opacity-50"
+                >
+                  {summaryLoading ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
+                  {summaryLoading ? 'Summarizing...' : 'Summarize'}
+                </button>
+              </div>
+            </div>
+            
+            <AnimatePresence>
+              {showSummary && aiSummary && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="bg-gradient-to-r from-purple-50 to-pink-50 p-3 rounded border border-purple-200"
+                >
+                  <p className="text-gray-700 text-sm leading-relaxed">{aiSummary}</p>
+                </motion.div>
               )}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {answers.map(answer => renderAnswer(answer))}
-            </div>
-          )}
+            </AnimatePresence>
+          </div>
         </div>
 
-        {/* Answer Form */}
+        {/* Answer Form - Moved Before Answers */}
         {isSignedIn && (
-          <div id="answer-form" className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
-            <h3 className="text-2xl font-bold text-gray-900 mb-6">Write Your Answer</h3>
-            <form onSubmit={handleSubmitAnswer} className="space-y-6">
-              <textarea
-                value={answerContent}
-                onChange={(e) => setAnswerContent(e.target.value)}
-                placeholder="Share your knowledge and help others..."
-                className="w-full p-6 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-200 focus:border-blue-400 resize-none text-lg"
-                rows={8}
-                required
-              />
+          <div id="answer-form" className="bg-white border border-gray-100 p-4 mb-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Your Answer</h3>
+            <form onSubmit={handleSubmitAnswer} className="space-y-4">
+              <div className="border border-gray-200 rounded">
+                <ReactQuill
+                  value={answerContent}
+                  onChange={setAnswerContent}
+                  modules={quillModules}
+                  formats={quillFormats}
+                  placeholder="Share your knowledge with rich formatting..."
+                  className="bg-white"
+                  style={{ minHeight: '200px' }}
+                />
+              </div>
               <div className="flex justify-end">
                 <button
                   type="submit"
                   disabled={answerLoading}
-                  className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-8 py-4 rounded-xl font-semibold hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50"
+                  className="bg-blue-500 text-white px-6 py-2 rounded font-medium hover:bg-blue-600 transition-colors flex items-center gap-2 disabled:opacity-50"
                 >
-                  {answerLoading ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
+                  {answerLoading ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
                   {answerLoading ? 'Posting...' : 'Post Answer'}
                 </button>
               </div>
@@ -847,20 +799,46 @@ const PostPage: React.FC = () => {
           </div>
         )}
 
-        {/* Sign In Prompt */}
+        {/* Sign In Prompt - Moved Before Answers */}
         {!isSignedIn && (
-          <div className="text-center py-12 bg-white rounded-2xl shadow-lg border border-gray-100">
-            <User className="mx-auto mb-4 text-gray-400" size={48} />
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">Want to answer this question?</h3>
-            <p className="text-gray-500 mb-6">Join our community to share your knowledge and help others.</p>
+          <div className="text-center py-8 bg-white border border-gray-100 p-6 mb-6">
+            <User className="mx-auto mb-4 text-gray-400" size={32} />
+            <h3 className="font-semibold text-gray-700 mb-2">Want to answer?</h3>
+            <p className="text-gray-500 text-sm mb-4">Join our community to share your knowledge.</p>
             <button
               onClick={() => navigate('/sign-in')}
-              className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition-all"
+              className="bg-blue-500 text-white px-4 py-2 rounded font-medium hover:bg-blue-600 transition-colors"
             >
               Sign In to Answer
             </button>
           </div>
         )}
+
+        {/* Answers Section */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-bold text-gray-900">
+              {answers.length} Answer{answers.length !== 1 ? 's' : ''}
+            </h2>
+          </div>
+
+          {answerLoading ? (
+            <div className="text-center py-8">
+              <Loader2 className="animate-spin mx-auto mb-4" size={32} />
+              <p className="text-gray-700">Loading answers...</p>
+            </div>
+          ) : answers.length === 0 ? (
+            <div className="text-center py-8 bg-white border border-gray-100 p-6">
+              <MessageSquare className="mx-auto mb-4 text-gray-400" size={32} />
+              <h3 className="font-semibold text-gray-700 mb-2">No answers yet</h3>
+              <p className="text-gray-500 text-sm">Be the first to answer this question!</p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {answers.map(answer => renderAnswer(answer))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

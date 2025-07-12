@@ -1,8 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, Filter, ChevronDown, PlusCircle, MessageSquare, User, Loader2, TrendingUp, Clock, Zap } from 'lucide-react';
+import { 
+  Search, Filter, ChevronDown, PlusCircle, MessageSquare, User, 
+  Loader2, TrendingUp, Clock, Zap, ThumbsUp, ThumbsDown, 
+  CheckCircle, AlertCircle, Eye, Calendar
+} from 'lucide-react';
 import { Helmet } from 'react-helmet';
 import { useUser } from '@clerk/clerk-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface Question {
   _id: string;
@@ -14,6 +19,7 @@ interface Question {
   tags: string[];
   image?: string | null;
   votes?: { upvotes: number; downvotes: number };
+  clerkUserId: string;
 }
 
 interface Pagination {
@@ -23,8 +29,8 @@ interface Pagination {
 }
 
 const FILTERS = [
-  { label: 'Trending', value: 'latest', icon: TrendingUp },
   { label: 'Latest', value: 'latest', icon: Clock },
+  { label: 'Trending', value: 'trending', icon: TrendingUp },
   { label: 'Unanswered', value: 'unanswered', icon: Zap },
   { label: 'Oldest', value: 'oldest', icon: Clock },
 ];
@@ -32,30 +38,99 @@ const FILTERS = [
 const Home: React.FC = () => {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [answerCounts, setAnswerCounts] = useState<{[key:string]:number}>({});
+  const [userProfiles, setUserProfiles] = useState<Map<string, any>>(new Map());
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState('latest');
   const [error, setError] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const navigate = useNavigate();
-  const { isSignedIn } = useUser();
+  const { isSignedIn, user } = useUser();
+
+  // Custom CSS variables
+  const cssVars = {
+    '--text': '#02110f',
+    '--background': '#f9fefe',
+    '--primary': '#29e2cc',
+    '--secondary': '#8d7fee',
+    '--accent': '#ae4ee7',
+  } as React.CSSProperties;
 
   useEffect(() => {
     fetchQuestions(currentPage, filter);
   }, [currentPage, filter]);
 
+  const showFeedback = (type: 'success' | 'error', message: string) => {
+    setFeedback({ type, message });
+    setTimeout(() => setFeedback(null), 3000);
+  };
+
+  const fetchUserProfile = async (clerkUserId: string) => {
+    if (userProfiles.has(clerkUserId)) return userProfiles.get(clerkUserId);
+    
+    try {
+      const res = await fetch(`http://localhost:5001/api/users/${clerkUserId}`);
+      if (res.ok) {
+        const profile = await res.json();
+        setUserProfiles(prev => new Map(prev).set(clerkUserId, profile));
+        return profile;
+      }
+    } catch (e) {
+      console.error('Failed to fetch user profile:', e);
+    }
+    return null;
+  };
+
+  const getUserAvatar = (clerkUserId: string, authorName: string, size: 'sm' | 'md' = 'sm') => {
+    const profile = userProfiles.get(clerkUserId);
+    const sizeClass = size === 'sm' ? 'w-6 h-6 text-xs' : 'w-8 h-8 text-sm';
+    
+    if (profile?.imageUrl) {
+      return (
+        <img
+          src={profile.imageUrl}
+          alt={authorName}
+          className={`${sizeClass} rounded-full object-cover`}
+        />
+      );
+    }
+    return (
+      <div className={`${sizeClass} rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold`}>
+        {authorName.charAt(0).toUpperCase()}
+      </div>
+    );
+  };
+
+  const formatTimeAgo = (dateString: string) => {
+    const now = new Date();
+    const date = new Date(dateString);
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (diffInSeconds < 60) return `${diffInSeconds}s ago`;
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+    if (diffInSeconds < 31536000) return `${Math.floor(diffInSeconds / 2592000)}mo ago`;
+    return `${Math.floor(diffInSeconds / 31536000)}y ago`;
+  };
+
   const fetchQuestions = async (page: number, sortBy: string) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`http://localhost:5001/api/questions?page=${page}&limit=6&sortBy=${sortBy}`);
+      const response = await fetch(`http://localhost:5001/api/questions?page=${page}&limit=10&sortBy=${sortBy}`);
       if (!response.ok) {
         throw new Error('Failed to fetch questions');
       }
       const data = await response.json();
       setQuestions(data.posts);
       setPagination(data.pagination);
+      
+      // Fetch user profiles for all question authors
+      const uniqueUserIds = [...new Set(data.posts.map((q: Question) => q.clerkUserId))];
+      await Promise.all(uniqueUserIds.map(userId => fetchUserProfile(userId)));
       
       // Fetch answer counts for all questions
       const counts: {[key:string]:number} = {};
@@ -83,6 +158,44 @@ const Home: React.FC = () => {
     }
   };
 
+  const handleVote = async (questionId: string, type: 'up' | 'down') => {
+    if (!isSignedIn || !user) {
+      showFeedback('error', 'You must be logged in to vote.');
+      return;
+    }
+
+    try {
+      const res = await fetch(`http://localhost:5001/api/questions/${questionId}/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clerkUserId: user.id,
+          vote: type === 'up' ? 1 : -1,
+        }),
+      });
+      
+      if (!res.ok) throw new Error('Vote failed');
+      
+      // Update the question in state
+      setQuestions(prev => prev.map(q => {
+        if (q._id === questionId) {
+          const newVotes = { ...q.votes };
+          if (type === 'up') {
+            newVotes.upvotes = (newVotes.upvotes || 0) + 1;
+          } else {
+            newVotes.downvotes = (newVotes.downvotes || 0) + 1;
+          }
+          return { ...q, votes: newVotes };
+        }
+        return q;
+      }));
+      
+      showFeedback('success', 'Vote submitted!');
+    } catch (e) {
+      showFeedback('error', 'Failed to vote.');
+    }
+  };
+
   let filteredQuestions = questions.filter(q =>
     q.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     q.excerpt.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -93,235 +206,276 @@ const Home: React.FC = () => {
     filteredQuestions = filteredQuestions.filter(q => answerCounts[q._id] === 0);
   }
 
-  const getVoteColor = (votes: number) => {
-    if (votes > 10) return 'from-emerald-400 to-green-500';
-    if (votes > 5) return 'from-blue-400 to-indigo-500';
-    if (votes > 0) return 'from-yellow-400 to-orange-500';
-    return 'from-gray-400 to-gray-500';
-  };
-
-  const getTagColor = (tag: string) => {
-    const colors = [
-      'bg-gradient-to-r from-purple-400 to-pink-400',
-      'bg-gradient-to-r from-blue-400 to-cyan-400',
-      'bg-gradient-to-r from-green-400 to-emerald-400',
-      'bg-gradient-to-r from-orange-400 to-red-400',
-      'bg-gradient-to-r from-indigo-400 to-purple-400',
-      'bg-gradient-to-r from-pink-400 to-rose-400',
-    ];
-    return colors[tag.length % colors.length];
-  };
-
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
+    <div className="min-h-screen bg-gray-50" style={cssVars}>
       <Helmet>
         <title>StackIt | Home</title>
       </Helmet>
-      
-      {/* Hero Section */}
-      <div className="text-center mb-12">
-        <div className="bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 bg-clip-text text-transparent">
-          <h1 className="text-6xl font-extrabold mb-4">StackIt</h1>
-        </div>
-        <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-          Ask, answer, and discover programming questions in a vibrant community of developers.
-        </p>
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <button
-            onClick={() => navigate('/create')}
-            className="flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-2xl shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300 font-semibold text-lg"
+
+      {/* Feedback Toast */}
+      <AnimatePresence>
+        {feedback && (
+          <motion.div
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-lg flex items-center gap-3 ${
+              feedback.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+            }`}
           >
-            <PlusCircle className="w-6 h-6" /> Ask New Question
-          </button>
-          {!isSignedIn && (
+            {feedback.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
+            {feedback.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
+      
+      <div className="max-w-6xl mx-auto px-4 py-6">
+        {/* Compact Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-3">
+            StackIt
+          </h1>
+          <p className="text-gray-600 mb-6 max-w-xl mx-auto">
+            Ask, answer, and discover programming questions in our developer community.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button
-              onClick={() => navigate('/sign-in')}
-              className="flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-2xl shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300 font-semibold text-lg"
+              onClick={() => navigate('/create')}
+              className="flex items-center gap-2 px-6 py-3 bg-blue-500 text-white rounded-xl shadow-lg hover:bg-blue-600 hover:shadow-xl transition-all font-medium"
             >
-              <User className="w-6 h-6" /> Join Community
+              <PlusCircle size={18} /> Ask Question
             </button>
-          )}
-        </div>
-      </div>
-
-      {/* Filters & Search */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 mb-8">
-        <div className="flex flex-wrap gap-3">
-          {FILTERS.map(f => {
-            const IconComponent = f.icon;
-            return (
+            {!isSignedIn && (
               <button
-                key={f.value}
-                onClick={() => setFilter(f.value)}
-                className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-medium border-2 transition-all duration-300 ${
-                  filter === f.value 
-                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white border-transparent shadow-lg' 
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-purple-300 hover:shadow-md'
-                }`}
+                onClick={() => navigate('/sign-in')}
+                className="flex items-center gap-2 px-6 py-3 bg-purple-500 text-white rounded-xl shadow-lg hover:bg-purple-600 hover:shadow-xl transition-all font-medium"
               >
-                <IconComponent className="w-4 h-4" />
-                {f.label}
+                <User size={18} /> Join Community
               </button>
-            );
-          })}
-        </div>
-        <div className="relative w-full lg:w-96">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-          <input
-            type="text"
-            placeholder="Search questions, tags, or content..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="w-full pl-12 pr-4 py-4 rounded-2xl border-2 border-gray-200 focus:ring-4 focus:ring-purple-200 focus:border-purple-400 transition-all bg-white shadow-lg text-lg"
-          />
-        </div>
-      </div>
-
-      {/* Error Message */}
-      {error && (
-        <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-4 mb-8">
-          <p className="text-red-600 text-center">{error}</p>
-        </div>
-      )}
-
-      {/* Questions List */}
-      <div className="space-y-6">
-        {loading ? (
-          <div className="flex justify-center py-20">
-            <div className="text-center">
-              <Loader2 className="animate-spin w-12 h-12 text-purple-500 mx-auto mb-4" />
-              <p className="text-gray-600">Loading amazing questions...</p>
-            </div>
+            )}
           </div>
-        ) : filteredQuestions.length === 0 ? (
-          <div className="text-center py-20">
-            <div className="bg-white rounded-3xl p-12 shadow-xl max-w-md mx-auto">
-              <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-2xl font-bold text-gray-700 mb-2">No questions found</h3>
-              <p className="text-gray-500 mb-6">
-                {searchTerm ? 'Try adjusting your search terms' : 'Be the first to ask a question!'}
-              </p>
-              {!searchTerm && (
+        </div>
+
+        {/* Filters & Search - Compact */}
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
+          <div className="flex flex-wrap gap-2">
+            {FILTERS.map(f => {
+              const IconComponent = f.icon;
+              return (
                 <button
-                  onClick={() => navigate('/create')}
-                  className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition-all"
+                  key={f.value}
+                  onClick={() => setFilter(f.value)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium border transition-all text-sm ${
+                    filter === f.value 
+                      ? 'bg-blue-500 text-white border-blue-500 shadow-md' 
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:shadow-sm'
+                  }`}
                 >
-                  Ask First Question
+                  <IconComponent size={14} />
+                  {f.label}
                 </button>
-              )}
-            </div>
+              );
+            })}
           </div>
-        ) : (
-          filteredQuestions.map(q => (
-            <div key={q._id} className="bg-white rounded-3xl shadow-xl p-8 hover:shadow-2xl transition-all duration-300 group border border-gray-100">
-              <div className="flex flex-col lg:flex-row gap-8">
-                {/* Vote Stats */}
-                <div className="flex lg:flex-col items-center justify-center gap-4 lg:gap-3 min-w-[120px]">
-                  <div className={`bg-gradient-to-br ${getVoteColor(q.votes?.upvotes ?? 0)} text-white rounded-2xl px-4 py-3 text-center shadow-lg`}>
-                    <div className="text-2xl font-bold">{q.votes?.upvotes ?? 0}</div>
-                    <div className="text-xs font-medium">votes</div>
-                  </div>
-                  <div className="bg-gradient-to-br from-cyan-400 to-blue-500 text-white rounded-2xl px-4 py-3 text-center shadow-lg flex items-center gap-2">
-                    <MessageSquare className="w-4 h-4" />
-                    <div>
-                      <div className="text-2xl font-bold">{answerCounts[q._id] ?? 0}</div>
-                      <div className="text-xs font-medium">answers</div>
-                    </div>
-                  </div>
-                </div>
+          <div className="relative w-full lg:w-80">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <input
+              type="text"
+              placeholder="Search questions..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition-all bg-white shadow-sm"
+            />
+          </div>
+        </div>
 
-                {/* Question Content */}
-                <div className="flex-1">
-                  <Link 
-                    to={`/post/${q.slug}`} 
-                    className="text-3xl font-bold text-gray-800 group-hover:text-purple-600 transition-colors duration-300 mb-4 block"
+        {/* Error Message */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+            <p className="text-red-600 text-center">{error}</p>
+          </div>
+        )}
+
+        {/* Questions List - Compact */}
+        <div className="space-y-3">
+          {loading ? (
+            <div className="flex justify-center py-12">
+              <div className="text-center">
+                <Loader2 className="animate-spin w-8 h-8 text-blue-500 mx-auto mb-4" />
+                <p className="text-gray-600">Loading questions...</p>
+              </div>
+            </div>
+          ) : filteredQuestions.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="bg-white rounded-xl p-8 shadow-lg max-w-md mx-auto border border-gray-100">
+                <MessageSquare className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-xl font-bold text-gray-700 mb-2">No questions found</h3>
+                <p className="text-gray-500 mb-4">
+                  {searchTerm ? 'Try adjusting your search terms' : 'Be the first to ask a question!'}
+                </p>
+                {!searchTerm && (
+                  <button
+                    onClick={() => navigate('/create')}
+                    className="bg-blue-500 text-white px-4 py-2 rounded-xl font-medium hover:bg-blue-600 transition-all"
                   >
-                    {q.title}
-                  </Link>
-                  
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {q.tags.map((tag, i) => (
-                      <span 
-                        key={i} 
-                        className={`${getTagColor(tag)} text-white px-4 py-2 rounded-full text-sm font-semibold shadow-md hover:scale-105 transition-transform`}
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                  
-                  <p className="text-gray-600 text-lg mb-4 line-clamp-3 leading-relaxed">
-                    {q.excerpt}
-                  </p>
-                  
-                  <div className="flex items-center gap-3 text-sm text-gray-500">
-                    <div className="flex items-center gap-2 bg-gray-100 px-3 py-2 rounded-full">
-                      <User className="w-4 h-4" />
-                      <span className="font-medium">{q.author}</span>
-                    </div>
-                    <div className="flex items-center gap-2 bg-gray-100 px-3 py-2 rounded-full">
-                      <Clock className="w-4 h-4" />
-                      <span>{new Date(q.createdAt).toLocaleDateString('en-US', { 
-                        year: 'numeric', 
-                        month: 'short', 
-                        day: 'numeric' 
-                      })}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Question Image */}
-                {q.image && (
-                  <div className="lg:w-48 lg:h-32 flex-shrink-0">
-                    <img 
-                      src={q.image} 
-                      alt={q.title} 
-                      className="w-full h-full object-cover rounded-2xl shadow-lg group-hover:scale-105 transition-transform duration-300" 
-                    />
-                  </div>
+                    Ask First Question
+                  </button>
                 )}
               </div>
             </div>
-          ))
+          ) : (
+            filteredQuestions.map(q => (
+              <motion.div 
+                key={q._id} 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white border border-gray-100 p-4 hover:bg-gray-50 transition-all group"
+              >
+                <div className="flex gap-4">
+                  {/* Vote Stats - Compact */}
+                  <div className="flex flex-col items-center gap-2 min-w-[60px]">
+                    <div className="flex flex-col items-center">
+                      <button
+                        onClick={() => handleVote(q._id, 'up')}
+                        className="p-1 hover:bg-green-100 rounded text-green-600 transition-colors"
+                      >
+                        <ThumbsUp size={16} />
+                      </button>
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-gray-800">
+                          {(q.votes?.upvotes ?? 0) - (q.votes?.downvotes ?? 0)}
+                        </div>
+                        <div className="text-xs text-gray-500">votes</div>
+                      </div>
+                      <button
+                        onClick={() => handleVote(q._id, 'down')}
+                        className="p-1 hover:bg-red-100 rounded text-red-600 transition-colors"
+                      >
+                        <ThumbsDown size={16} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Answer Count */}
+                  <div className="flex flex-col items-center justify-center min-w-[60px]">
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-gray-800">{answerCounts[q._id] ?? 0}</div>
+                      <div className="text-xs text-gray-500">answers</div>
+                    </div>
+                  </div>
+
+                  {/* Question Content */}
+                  <div className="flex-1">
+                    <Link 
+                      to={`/post/${q.slug}`} 
+                      className="text-lg font-semibold text-gray-800 hover:text-blue-600 transition-colors mb-2 block group-hover:text-blue-600"
+                    >
+                      {q.title}
+                    </Link>
+                    
+                    {/* Tags - Compact */}
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {q.tags.slice(0, 3).map((tag, i) => (
+                        <span 
+                          key={i} 
+                          className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                      {q.tags.length > 3 && (
+                        <span className="text-xs text-gray-500">+{q.tags.length - 3} more</span>
+                      )}
+                    </div>
+                    
+                    <p className="text-gray-600 text-sm mb-2 line-clamp-2">
+                      {q.excerpt}
+                    </p>
+                    
+                    {/* Meta Info - Compact */}
+                    <div className="flex items-center gap-3 text-xs text-gray-500">
+                      <div className="flex items-center gap-1">
+                        {getUserAvatar(q.clerkUserId, q.author, 'sm')}
+                        <span className="font-medium">{q.author}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Clock size={12} />
+                        <span>{formatTimeAgo(q.createdAt)}</span>
+                      </div>
+                      {answerCounts[q._id] === 0 && (
+                        <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded text-xs font-medium">
+                          Unanswered
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Question Image - Compact */}
+                  {q.image && (
+                    <div className="w-16 h-16 flex-shrink-0">
+                      <img 
+                        src={q.image} 
+                        alt={q.title} 
+                        className="w-full h-full object-cover rounded border shadow-sm" 
+                      />
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            ))
+          )}
+        </div>
+
+        {/* Pagination - Compact */}
+        {pagination && pagination.pages > 1 && (
+          <div className="flex justify-center items-center gap-2 mt-8">
+            <button
+              onClick={() => setCurrentPage(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium text-sm"
+            >
+              Previous
+            </button>
+            
+            <div className="flex gap-1">
+              {[...Array(Math.min(pagination.pages, 5))].map((_, i) => {
+                let pageNum;
+                if (pagination.pages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= pagination.pages - 2) {
+                  pageNum = pagination.pages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`px-3 py-2 rounded-lg border font-medium transition-all text-sm ${
+                      currentPage === pageNum 
+                        ? 'bg-blue-500 text-white border-blue-500 shadow-md' 
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:shadow-sm'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+            
+            <button
+              onClick={() => setCurrentPage(currentPage + 1)}
+              disabled={currentPage === pagination.pages}
+              className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium text-sm"
+            >
+              Next
+            </button>
+          </div>
         )}
       </div>
-
-      {/* Pagination */}
-      {pagination && pagination.pages > 1 && (
-        <div className="flex justify-center items-center gap-3 mt-12">
-          <button
-            onClick={() => setCurrentPage(currentPage - 1)}
-            disabled={currentPage === 1}
-            className="px-6 py-3 rounded-2xl border-2 border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:border-purple-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium"
-          >
-            Previous
-          </button>
-          
-          <div className="flex gap-2">
-            {[...Array(pagination.pages)].map((_, i) => (
-              <button
-                key={i}
-                onClick={() => setCurrentPage(i + 1)}
-                className={`px-4 py-3 rounded-2xl border-2 font-medium transition-all ${
-                  currentPage === i + 1 
-                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white border-transparent shadow-lg' 
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-purple-300 hover:shadow-md'
-                }`}
-              >
-                {i + 1}
-              </button>
-            ))}
-          </div>
-          
-          <button
-            onClick={() => setCurrentPage(currentPage + 1)}
-            disabled={currentPage === pagination.pages}
-            className="px-6 py-3 rounded-2xl border-2 border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:border-purple-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium"
-          >
-            Next
-          </button>
-        </div>
-      )}
     </div>
   );
 };

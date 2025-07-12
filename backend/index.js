@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import quetionsRoutes from './routes/questions.js';
 import answerRoutes from './routes/answers.js'; // Import the Answers model
 import axios from 'axios';
+import { ClerkExpressWithAuth } from '@clerk/clerk-sdk-node';
 dotenv.config();
 
 const app = express();
@@ -43,6 +44,28 @@ app.post('/api/summarize', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+//user profile
+// Get user profile by Clerk ID
+app.get('/:clerkUserId', async (req, res) => {
+  try {
+    const { clerkUserId } = req.params;
+    const user = await clerkClient.users.getUser(clerkUserId);
+    
+    res.json({
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      imageUrl: user.imageUrl,
+      emailAddress: user.emailAddresses[0]?.emailAddress,
+    });
+  } catch (error) {
+    console.error('Error fetching user:', error);
+    res.status(404).json({ error: 'User not found' });
+  }
+});
+
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'Server is running' });

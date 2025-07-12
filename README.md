@@ -2,10 +2,10 @@
 
 A beautiful, modern, and feature-rich Q&A platform for programming questions, built with React, TypeScript, and Node.js.
 
-virbhalani72@gmail.com
-oren.coelho23@spit.ac.in
-tanay.patel23@spit.ac.in
-preyansh.mehta23@spit.ac.in
+- virbhalani72@gmail.com
+- oren.coelho23@spit.ac.in
+- tanay.patel23@spit.ac.in
+- preyansh.mehta23@spit.ac.in
 
 ## ✨ Features
 

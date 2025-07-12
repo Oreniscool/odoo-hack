@@ -404,7 +404,7 @@ const PostPage: React.FC = () => {
       fetchAnswers(question._id);
       showFeedback("success", "Answer submitted successfully!");
       const res2 = await fetch(
-        `http://localhost:5001/api/notifications/${user}`,
+        `http://localhost:5001/api/notifications/${user.id}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

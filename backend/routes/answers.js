@@ -1,9 +1,8 @@
 import express from 'express';
 import Answers from '../models/answer.js'; // Your AnswerSchema model
 import Questions from '../models/schema.js';     // Your QuestionSchema model
-
+import Notification from '../models/notification.js';
 const router = express.Router();
-
 
 // POST /answers
 router.post('/', async (req, res) => {
@@ -11,6 +10,23 @@ router.post('/', async (req, res) => {
     const { content, author, clerkUserId, question, parent = null } = req.body;
     const answer = new Answers({ content, author, clerkUserId, question, parent });
     await answer.save();
+
+    // Fetch the full question document to get owner info
+    const questionDoc = await Questions.findById(question);
+    if (
+      questionDoc &&
+      questionDoc.clerkUserId &&
+      questionDoc.clerkUserId !== clerkUserId // Don't notify yourself
+    ) {
+      await Notification.create({
+        clerkUserId: questionDoc.clerkUserId,
+        title: 'New reply to your question',
+        message: `${author} replied to your question "${questionDoc.title}".`,
+        questionId: questionDoc._id,
+        answerId: answer._id,
+      });
+    }
+
     res.status(201).json(answer);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -18,10 +34,12 @@ router.post('/', async (req, res) => {
 });
 
 
+
 // GET /answers/question/:questionId
 router.get('/question/:questionId', async (req, res) => {
   try {
     const answers = await Answers.find({ question: req.params.questionId });
+    
     res.json(answers);
   } catch (err) {
     res.status(500).json({ error: err.message });

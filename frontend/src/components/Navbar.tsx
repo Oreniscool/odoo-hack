@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useClerk, useUser, SignInButton } from '@clerk/clerk-react';
 import { MessageSquare, User, LogOut, PlusCircle, Menu, X, Home, Settings, BookOpen } from 'lucide-react';
+import { Bell, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 
 const Navbar: React.FC = () => {
   const { isSignedIn, user } = useUser();
@@ -9,6 +10,31 @@ const Navbar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifError, setNotifError] = useState<string | null>(null);
+
+  const fetchNotifications = async () => {
+    if (!user?.id) return;
+    setNotifLoading(true);
+    setNotifError(null);
+    try {
+      const res = await fetch(`http://localhost:5001/api/notifications?clerkUserId=${user.id}`);
+      if (!res.ok) throw new Error('Failed to fetch notifications');
+      const data = await res.json();
+      setNotifications(data.notifications || []);
+    } catch (e: any) {
+      setNotifError(e.message || 'Error loading notifications');
+    } finally {
+      setNotifLoading(false);
+    }
+  };
+
+  const handleNotifClick = () => {
+    setNotifOpen((v) => !v);
+    if (!notifOpen) fetchNotifications();
+  };
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -17,6 +43,23 @@ const Navbar: React.FC = () => {
     navigate('/');
     setIsMobileMenuOpen(false);
   };
+
+  const handleMarkAllRead = async () => {
+  if (!user?.id) return;
+  try {
+    await fetch('http://localhost:5001/api/notifications/mark-read', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clerkUserId: user.id }),
+    });
+    // Update notifications state to mark all as read locally
+    setNotifications(notifications.map(n => ({ ...n, read: true })));
+  } catch (e) {
+    // Optionally show a toast or error
+    alert('Failed to mark notifications as read.');
+  }
+};
+
 
   return (
     <nav className="bg-white/80 backdrop-blur-md border-b border-gray-200 shadow-lg sticky top-0 z-50">
@@ -75,6 +118,67 @@ const Navbar: React.FC = () => {
               </Link>
             )}
           </div>
+                  {isSignedIn && (
+                  <div className="relative">
+                    <button
+                      onClick={handleNotifClick}
+                      className="p-2 rounded-full hover:bg-purple-100 transition-colors relative"
+                      title="Notifications"
+                    >
+                      <Bell className="w-6 h-6 text-purple-600" />
+                      {notifications.some(n => !n.read) && (
+                        <span className="absolute top-1 right-1 w-2 h-2 bg-pink-500 rounded-full border-2 border-white" />
+                      )}
+                    </button>
+                    {/* Notification Drawer */}
+                    {notifOpen && (
+                      <div className="absolute right-0 mt-3 w-96 max-w-[95vw] bg-white rounded-xl shadow-2xl border border-gray-200 z-50">
+                        <div className="p-4 border-b flex items-center justify-between">
+          <span className="font-bold text-lg text-gray-800">Notifications</span>
+          <div className="flex items-center gap-2">
+            {notifications.length > 0 && notifications.some(n => !n.read) && (
+              <button
+                onClick={handleMarkAllRead}
+                className="text-xs font-semibold text-purple-700 hover:text-purple-900 px-3 py-1 rounded transition-colors bg-purple-100 hover:bg-purple-200"
+              >
+                Mark all as read
+              </button>
+            )}
+            <button onClick={() => setNotifOpen(false)} className="text-gray-400 hover:text-gray-700">
+              ✕
+            </button>
+          </div>
+        </div>
+
+                <div className="max-h-96 overflow-y-auto">
+                  {notifLoading ? (
+                    <div className="flex justify-center p-6">
+                      <Loader2 className="animate-spin w-6 h-6 text-purple-500" />
+                    </div>
+                  ) : notifError ? (
+                    <div className="text-red-500 p-4">{notifError}</div>
+                  ) : notifications.length === 0 ? (
+                    <div className="text-gray-500 p-4 text-center">No notifications yet.</div>
+                  ) : (
+                    notifications.map((n, i) => (
+                      <div
+                        key={n._id || i}
+                        className={`px-4 py-3 border-b last:border-b-0 flex items-start gap-2 ${n.read ? 'bg-white' : 'bg-purple-50'}`}
+                      >
+                        <div>
+                          <span className="font-semibold text-purple-700">{n.title || 'New Reply'}</span>
+                          <div className="text-gray-700 text-sm">{n.message}</div>
+                          <div className="text-xs text-gray-400 mt-1">{new Date(n.createdAt).toLocaleString()}</div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
 
           {/* User Menu */}
           <div className="hidden md:flex items-center gap-4">

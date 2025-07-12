@@ -6,6 +6,7 @@ import quetionsRoutes from './routes/questions.js';
 import answerRoutes from './routes/answers.js'; // Import the Answers model
 import axios from 'axios';
 import { ClerkExpressWithAuth } from '@clerk/clerk-sdk-node';
+import Notification from './models/notification.js'; // Import the Notification model
 dotenv.config();
 
 const app = express();
@@ -64,6 +65,24 @@ app.get('/:clerkUserId', async (req, res) => {
     res.status(404).json({ error: 'User not found' });
   }
 });
+
+// Notfications
+// GET /api/notifications?clerkUserId=...
+app.get('/api/notifications', async (req, res) => {
+  const { clerkUserId } = req.query;
+  if (!clerkUserId) return res.status(401).json({ error: 'Not authenticated' });
+  const notifications = await Notification.find({ clerkUserId }).sort({ createdAt: -1 }).limit(50);
+  
+  res.json({ notifications });
+});
+// PATCH /api/notifications/mark-read
+app.patch('/api/notifications/mark-read', async (req, res) => {
+  const { clerkUserId } = req.body;
+  await Notification.updateMany({ clerkUserId, read: false }, { $set: { read: true } });
+  res.json({ success: true });
+});
+
+
 
 
 // Health check

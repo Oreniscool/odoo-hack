@@ -65,16 +65,73 @@ const generateExcerpt = (content, maxLength = 150) => {
 //     "pages": 1,
 //     "total": 2
 //   }
-// }
+// // }
+// router.get('/', async (req, res) => {
+//   try {
+//     const page = parseInt(req.query.page) || 1;
+//     const limit = parseInt(req.query.limit) || 10;
+//     const skip = (page - 1) * limit;
+
+//     const [posts, total] = await Promise.all([
+//       Questions.find({ published: true })
+//         .sort({ createdAt: -1 })
+//         .skip(skip)
+//         .limit(limit),
+//       Questions.countDocuments({ published: true })
+//     ]);
+
+//     const postsWithImages = posts.map(post => {
+//       let image = null;
+//       if (post.image?.data && post.image?.contentType) {
+//         const base64 = post.image.data.toString('base64');
+//         image = `data:${post.image.contentType};base64,${base64}`;
+//       }
+
+//       return {
+//         _id: post._id,
+//         title: post.title,
+//         excerpt: post.excerpt,
+//         slug: post.slug,
+//         author: post.author,
+//         createdAt: post.createdAt,
+//         readTime: post.readTime,
+//         tags: post.tags,
+//         image, // ✅ base64 string
+//       };
+//     });
+
+//     res.json({
+//       posts: postsWithImages,
+//       pagination: {
+//         current: page,
+//         pages: Math.ceil(total / limit),
+//         total,
+//       },
+//     });
+//   } catch (error) {
+//     res.status(500).json({ error: error.message });
+//   }
+// });
+
+// GET /api/posts - Get all posts with optional sorting (e.g. ?sortBy=latest)
+//example dekhle GET /api/questions?sortBy=latest
 router.get('/', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
+    // Sorting logic
+    let sortQuery = { createdAt: -1 }; // default is newest first
+    if (req.query.sortBy === 'latest') {
+      sortQuery = { createdAt: -1 }; // same as default, just for clarity
+    } else if (req.query.sortBy === 'oldest') {
+      sortQuery = { createdAt: 1 }; // oldest first
+    }
+
     const [posts, total] = await Promise.all([
       Questions.find({ published: true })
-        .sort({ createdAt: -1 })
+        .sort(sortQuery)
         .skip(skip)
         .limit(limit),
       Questions.countDocuments({ published: true })
@@ -86,7 +143,6 @@ router.get('/', async (req, res) => {
         const base64 = post.image.data.toString('base64');
         image = `data:${post.image.contentType};base64,${base64}`;
       }
-
       return {
         _id: post._id,
         title: post.title,
@@ -96,7 +152,7 @@ router.get('/', async (req, res) => {
         createdAt: post.createdAt,
         readTime: post.readTime,
         tags: post.tags,
-        image, // ✅ base64 string
+        image,
       };
     });
 
@@ -112,8 +168,6 @@ router.get('/', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
-
 
 
 
@@ -288,7 +342,7 @@ router.post('/', upload.single('image'), async (req, res) => {
 
     if (!title || !content || !author) {
       return res.status(400).json({
-        error: 'Title, content, and author are required'
+        error: 'Title, content,clerkuserid and author are required'
       });
     }
 

@@ -29,6 +29,11 @@ const AnswerSchema = new mongoose.Schema({
   accepted: {
     type: Boolean,
     default: false
+  },
+  parent: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Answers',
+    default: null // For replies to answers
   }
 }, {
   timestamps: true

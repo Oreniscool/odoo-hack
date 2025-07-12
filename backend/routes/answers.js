@@ -6,7 +6,6 @@ const router = express.Router();
 
 
 // POST /answers
-// POST /answers
 router.post('/', async (req, res) => {
   try {
     const { content, author, clerkUserId, question, parent = null } = req.body;
@@ -55,11 +54,17 @@ router.put('/:id', async (req, res) => {
     res.status(400).json({ error: err.message });
   }
 });
-// POST /answers/:id/reply
 router.post('/:id/reply', async (req, res) => {
   try {
     const { content, author, clerkUserId, question } = req.body;
     const parent = req.params.id;
+
+    // Optional: Validate parent answer exists
+    const parentAnswer = await Answers.findById(parent);
+    if (!parentAnswer) {
+      return res.status(404).json({ error: 'Parent answer not found' });
+    }
+
     const reply = new Answers({ content, author, clerkUserId, question, parent });
     await reply.save();
     res.status(201).json(reply);
@@ -67,6 +72,7 @@ router.post('/:id/reply', async (req, res) => {
     res.status(400).json({ error: err.message });
   }
 });
+
 
 
 // DELETE /answers/:id
@@ -145,6 +151,41 @@ router.patch('/:id/accept', async (req, res) => {
     await answer.save();
 
     res.json({ message: 'Answer marked as accepted', answer });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// GET /answers/thread/:parentId
+router.get('/thread/:parentId', async (req, res) => {
+  try {
+    const parentId = req.params.parentId;
+
+    // Fetch all answers in the same question as the parent answer
+    const parentAnswer = await Answers.findById(parentId);
+    if (!parentAnswer) {
+      return res.status(404).json({ error: 'Parent answer not found' });
+    }
+
+    // Get all answers for the same question
+    const allAnswers = await Answers.find({ question: parentAnswer.question }).lean();
+
+    // Build a map of answers by their _id for easy lookup
+    const answerMap = {};
+    allAnswers.forEach(ans => { answerMap[ans._id.toString()] = { ...ans, replies: [] }; });
+
+    // Build the threaded tree
+    allAnswers.forEach(ans => {
+      if (ans.parent && answerMap[ans.parent.toString()]) {
+        answerMap[ans.parent.toString()].replies.push(answerMap[ans._id.toString()]);
+      }
+    });
+
+    // Recursively collect the thread starting from the parent answer
+    const thread = answerMap[parentId];
+
+    res.json(thread);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

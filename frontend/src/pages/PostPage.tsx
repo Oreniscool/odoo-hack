@@ -414,7 +414,7 @@ const PostPage: React.FC = () => {
             type: "answer",
             questionId: question._id,
             isRead: false,
-            createdAt: Date.now()
+            createdAt: Date.now(),
           }),
         }
       );
@@ -705,7 +705,7 @@ const PostPage: React.FC = () => {
           </h2>
           <Link
             to="/"
-            className="bg-blue-500 text-white px-6 py-3 rounded-xl font-semibold hover:bg-blue-600 transition-colors inline-flex items-center gap-2"
+            className="bg-blue-500 text-white px-6 py-3 rounded-xl font-semibold hover:bg-blue-600 transition-colors inline-flex items-center gap-2 mt-4"
           >
             <ArrowLeft size={20} />
             Back to Home
@@ -748,24 +748,26 @@ const PostPage: React.FC = () => {
         <div className="mb-8">
           <Link
             to="/"
-            className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 font-semibold mb-6 transition-colors"
+            className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 font-semibold mb-6 transition-colors mt-2"
+            style={{ marginLeft: 4 }}
           >
             <ArrowLeft size={20} />
             Back to Questions
           </Link>
 
           {/* Question Card */}
-          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 mt-4">
             <div className="flex items-start gap-6">
               {/* Vote Section */}
-              <div className="flex flex-col items-center gap-2">
+              <div className="flex flex-col items-center gap-2 mt-2">
                 <button
                   onClick={() => handleVote("up")}
-                  className="p-3 bg-green-100 hover:bg-green-200 rounded-xl transition-colors text-green-600"
+                  className="p-3 bg-green-100 hover:bg-green-200 rounded-xl transition-colors text-green-600 mb-2"
+                  style={{ marginLeft: 4 }}
                 >
                   <ThumbsUp size={24} />
                 </button>
-                <div className="text-center">
+                <div className="text-center mb-2">
                   <div className="text-2xl font-bold text-gray-800">
                     {(question.votes?.upvotes ?? 0) -
                       (question.votes?.downvotes ?? 0)}
@@ -774,7 +776,8 @@ const PostPage: React.FC = () => {
                 </div>
                 <button
                   onClick={() => handleVote("down")}
-                  className="p-3 bg-red-100 hover:bg-red-200 rounded-xl transition-colors text-red-600"
+                  className="p-3 bg-red-100 hover:bg-red-200 rounded-xl transition-colors text-red-600 mt-2"
+                  style={{ marginLeft: 4 }}
                 >
                   <ThumbsDown size={24} />
                 </button>
@@ -782,7 +785,7 @@ const PostPage: React.FC = () => {
 
               {/* Question Content */}
               <div className="flex-1">
-                <h1 className="text-3xl font-bold text-gray-900 mb-4">
+                <h1 className="text-3xl font-bold text-gray-900 mb-4 mt-2">
                   {question.title}
                 </h1>
 
@@ -794,6 +797,7 @@ const PostPage: React.FC = () => {
                       className={`${getTagColor(
                         tag
                       )} text-white px-3 py-1 rounded-full text-sm font-medium`}
+                      style={{ marginTop: 2, marginBottom: 2 }}
                     >
                       {tag}
                     </span>
@@ -806,18 +810,19 @@ const PostPage: React.FC = () => {
                     src={question.image}
                     alt="Question"
                     className="w-full max-w-md rounded-xl shadow-md mb-4"
+                    style={{ marginTop: 8, marginBottom: 8 }}
                   />
                 )}
 
                 {/* Question Body */}
-                <div className="prose prose-lg max-w-none mb-6">
+                <div className="prose prose-lg max-w-none mb-6 mt-2">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {question.content}
                   </ReactMarkdown>
                 </div>
 
                 {/* Question Meta */}
-                <div className="flex items-center gap-4 text-gray-600">
+                <div className="flex items-center gap-4 text-gray-600 mt-2">
                   <div className="flex items-center gap-2">
                     <User size={16} />
                     <span className="font-medium">{question.author}</span>
@@ -844,7 +849,7 @@ const PostPage: React.FC = () => {
 
       {/* AI Summary Section */}
       {showSummary && summary && (
-        <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-3xl shadow-xl p-8 mb-8 border-2 border-purple-200">
+        <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-3xl shadow-xl p-8 mb-8 border-2 border-purple-200 mx-4">
           <div className="flex items-center gap-3 mb-4">
             <Sparkles className="w-6 h-6 text-purple-500" />
             <h2 className="text-2xl font-bold text-gray-800">AI Summary</h2>
@@ -866,8 +871,8 @@ const PostPage: React.FC = () => {
       )}
 
       {/* Answers Section */}
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
+      <div className="space-y-6 mx-4">
+        <div className="flex items-center justify-between mt-4 mb-4">
           <h2 className="text-3xl font-bold text-gray-800">
             {answers.length} Answer{answers.length !== 1 ? "s" : ""}
           </h2>
@@ -875,7 +880,8 @@ const PostPage: React.FC = () => {
             <button
               onClick={handleSummarize}
               disabled={summaryLoading || !question}
-              className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-6 py-3 rounded-2xl font-semibold hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-6 py-3 rounded-2xl font-semibold hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ml-2"
+              style={{ marginRight: 4 }}
             >
               {summaryLoading ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
@@ -891,7 +897,8 @@ const PostPage: React.FC = () => {
                     .getElementById("answer-form")
                     ?.scrollIntoView({ behavior: "smooth" })
                 }
-                className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-3 rounded-2xl font-semibold hover:shadow-lg transition-all flex items-center gap-2"
+                className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-6 py-3 rounded-2xl font-semibold hover:shadow-lg transition-all flex items-center gap-2 ml-2"
+                style={{ marginRight: 4 }}
               >
                 <MessageSquare className="w-5 h-5" />
                 Write Answer
@@ -908,7 +915,7 @@ const PostPage: React.FC = () => {
             </p>
           </div>
         ) : answers.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-2xl shadow-lg border border-gray-100">
+          <div className="text-center py-12 bg-white rounded-2xl shadow-lg border border-gray-100 mx-4">
             <MessageSquare className="mx-auto mb-4 text-gray-400" size={48} />
             <h3 className="text-xl font-semibold text-gray-700 mb-2">
               No answers yet
@@ -923,7 +930,8 @@ const PostPage: React.FC = () => {
                     .getElementById("answer-form")
                     ?.scrollIntoView({ behavior: "smooth" })
                 }
-                className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition-all"
+                className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition-all mt-2"
+                style={{ marginRight: 4 }}
               >
                 Write First Answer
               </button>
@@ -940,7 +948,7 @@ const PostPage: React.FC = () => {
       {isSignedIn && (
         <div
           id="answer-form"
-          className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8"
+          className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 mx-4 mt-8 mb-8"
         >
           <h3 className="text-2xl font-bold text-gray-900 mb-6">
             Write Your Answer
@@ -953,12 +961,14 @@ const PostPage: React.FC = () => {
               className="w-full p-6 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-200 focus:border-blue-400 resize-none text-lg"
               rows={8}
               required
+              style={{ marginBottom: 8 }}
             />
             <div className="flex justify-end">
               <button
                 type="submit"
                 disabled={answerLoading}
                 className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-8 py-4 rounded-xl font-semibold hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50"
+                style={{ marginRight: 4 }}
               >
                 {answerLoading ? (
                   <Loader2 className="animate-spin" size={20} />
@@ -974,7 +984,7 @@ const PostPage: React.FC = () => {
 
       {/* Sign In Prompt */}
       {!isSignedIn && (
-        <div className="text-center py-12 bg-white rounded-2xl shadow-lg border border-gray-100">
+        <div className="text-center py-12 bg-white rounded-2xl shadow-lg border border-gray-100 mx-4 mt-8 mb-8">
           <User className="mx-auto mb-4 text-gray-400" size={48} />
           <h3 className="text-xl font-semibold text-gray-700 mb-2">
             Want to answer this question?
@@ -984,7 +994,8 @@ const PostPage: React.FC = () => {
           </p>
           <button
             onClick={() => navigate("/sign-in")}
-            className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition-all"
+            className="bg-gradient-to-r from-blue-500 to-purple-500 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition-all mt-2"
+            style={{ marginRight: 4 }}
           >
             Sign In to Answer
           </button>
